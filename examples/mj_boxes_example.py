@@ -16,7 +16,7 @@ robot_name2id = {
     "ur10e_shadow": "UR10EShadow",
 }
 obj_name2id = {
-    "boxes": "Boxes",  # normalized asset under assets/objects/mjcf/
+    "boxes": "Boxes",  # uses the normalized boxes MJCF asset under assets/objects/mjcf/
     "insole_fixed": "Insole",
     "pillow_fixed": "Pillow",
 }
@@ -33,7 +33,7 @@ def make_env():
     parser.add_argument(
         "--obj",
         type=str,
-        default="insole_fixed",
+        default="boxes",   # default to the boxes asset
         help=f"available objects: {list(obj_name2id.keys())}",
     )
     parser.add_argument(

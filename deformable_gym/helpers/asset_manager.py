@@ -30,6 +30,7 @@ ROBOTS = {
 OBJECTS = {
     "insole_fixed": os.path.join(OBJECT_DIR, "insole_fixed.xml"),
     "pillow_fixed": os.path.join(OBJECT_DIR, "pillow_fixed.xml"),
+    "boxes": os.path.join(OBJECT_DIR,  "boxes.xml"),
 }
 
 SCENE_BASE = os.path.join(ASSETS_DIR, "mj_scene_base.xml")

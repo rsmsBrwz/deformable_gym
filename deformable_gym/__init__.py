@@ -101,6 +101,7 @@ def register_mj_grasp_envs(
     obj_name2id = {
         "insole_fixed": "Insole",
         "pillow_fixed": "Pillow",
+        "boxes": "Boxes",
     }
 
     mia_hand_cam_config = {

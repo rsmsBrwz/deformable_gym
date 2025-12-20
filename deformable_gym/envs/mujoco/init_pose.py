@@ -34,12 +34,22 @@ class ObjectInitPose:
         "ur10e_mia": Pose([1.48, -0.05, 1], [0, 0, np.pi / 2]),
     }
 
+    # Deformable boxes start at z~0.02 in boxes.xml. Without an explicit reset pose,
+    # floating hands (mia_hand/shadow_hand) start at the origin and collide with the floor.
+    # We place the boxes up at the same working height used by insole_fixed.
+    boxes = {
+        "shadow_hand": Pose([0.12, -0.05, 0.456], [0, 0, 0]),
+        "mia_hand": Pose([0.12, -0.05, 0.456], [0, 0, 0]),
+    }
+
     @staticmethod
     def get(name: str) -> dict[str, Pose]:
         if name == "insole_fixed":
             return ObjectInitPose.insole_fixed
         elif name == "pillow_fixed":
             return ObjectInitPose.pillow_fixed
+        elif name == "boxes":
+            return ObjectInitPose.boxes
         else:
             return {}
 
@@ -48,10 +58,12 @@ class RobotInitPose:
 
     shadow_hand = {
         "insole_fixed": Pose([-0.35, 0, 0.49], [0, np.pi / 2, 0]),
+        "boxes": Pose([-0.35, 0, 0.49], [0, np.pi / 2, 0]),
     }
 
     mia_hand = {
         "insole_fixed": Pose([-0.1, 0, 0.49], [0, np.pi, np.pi / 2]),
+        "boxes": Pose([-0.1, 0, 0.49], [0, np.pi, np.pi / 2]),
     }
 
     @staticmethod

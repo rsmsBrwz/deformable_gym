@@ -104,6 +104,13 @@ class PillowFixed(FixedObject):
         super().__init__(name)
 
 
+class BoxesFixed(FixedObject):
+    """Collection of fixed deformable boxes (see assets/objects/boxes.xml)."""
+
+    def __init__(self, name="boxes") -> None:
+        super().__init__(name)
+
+
 class ObjectFactory:
 
     @staticmethod
@@ -112,5 +119,7 @@ class ObjectFactory:
             return InsoleFixed()
         if name == "pillow_fixed":
             return PillowFixed()
+        if name == "boxes":
+            return BoxesFixed()
         else:
             raise ValueError(f"Object {name} not found")
