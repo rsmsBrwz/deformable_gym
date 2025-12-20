@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import mujoco
+from lxml.html.builder import OBJECT
 
 ASSETS_DIR = Path(__file__).parents[1] / "assets"
 MESH_DIR = os.path.join(ASSETS_DIR, "meshes")
