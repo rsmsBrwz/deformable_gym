@@ -7,8 +7,24 @@ import mujoco.viewer
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from ...helpers import grasp_metrics as gm
 from ...helpers import mj_utils as mju
 from .base_mjenv import BaseMJEnv
+
+# Episodic grasp-stability measures, only computed once _pause_simulation runs
+# at episode end. Keys always exist in the info dict (NaN until computed) so
+# that consumers (e.g. SB3's Monitor with info_keywords) never see a missing
+# key, even if an episode ends early (e.g. truncated due to a NaN state).
+_EPISODE_METRIC_KEYS = (
+    "retained_ratio",
+    "energy_potential_before",
+    "energy_kinetic_before",
+    "energy_potential_after",
+    "energy_kinetic_after",
+    "dynamic_max_displacement",
+    "dynamic_final_speed",
+    "dynamic_settle_step",
+)
 
 
 class GraspEnv(BaseMJEnv):
@@ -47,9 +63,15 @@ class GraspEnv(BaseMJEnv):
         )
 
         self.reward_range = (-1, 1)
+        self._episode_grasp_metrics = {k: float("nan") for k in _EPISODE_METRIC_KEYS}
+        self._object_part_names: list[str] = []
 
     def reset(self, *, seed=None, options=None) -> tuple[NDArray, dict]:
         super().reset(seed=seed, options=options)
+        self._episode_grasp_metrics = {k: float("nan") for k in _EPISODE_METRIC_KEYS}
+        self._object_part_names = mju.get_direct_child_body_names(
+            self.model, self.object.name
+        )
         observation = self._get_observation()
         info = self._get_info()
         return observation, info
@@ -89,11 +111,39 @@ class GraspEnv(BaseMJEnv):
             self.model, self.data, *self.object.eq_constraints_to_disable
         )
         mju.disable_joint(self.model, self.data, *self.robot.joints)
+
+        energy_before = gm.energy_quality(self.data)
+
         start_time = self.data.time
+        while self.data.time - start_time < time / 2:
+            mujoco.mj_step(self.model, self.data)
+            if self.render_mode == "human":
+                self.render()
+
+        retained_ratio = gm.object_retained_ratio(
+            self.model, self.data, self._hand_body_ids, self._object_part_names
+        )
+        stability_probe = gm.dynamic_stability_probe(
+            self.model, self.data, self.object.name
+        )
+
         while self.data.time - start_time < time:
             mujoco.mj_step(self.model, self.data)
             if self.render_mode == "human":
                 self.render()
+
+        energy_after = gm.energy_quality(self.data)
+
+        self._episode_grasp_metrics = {
+            "retained_ratio": retained_ratio,
+            "energy_potential_before": energy_before["potential"],
+            "energy_kinetic_before": energy_before["kinetic"],
+            "energy_potential_after": energy_after["potential"],
+            "energy_kinetic_after": energy_after["kinetic"],
+            "dynamic_max_displacement": stability_probe["max_displacement"],
+            "dynamic_final_speed": stability_probe["final_speed"],
+            "dynamic_settle_step": stability_probe["settle_step"],
+        }
 
     def _get_reward(self, terminated: bool) -> int:
         """
@@ -138,13 +188,25 @@ class GraspEnv(BaseMJEnv):
 
     def _get_info(self) -> dict:
         """
-        If the GUI viewer is running, this method will return a dictionary indicating that.
+        Returns per-step grasp-stability measures (contact score, binary
+        grasp state), merged with the episodic measures (retained ratio,
+        energy, dynamic stability probe) once they become available at
+        episode end.
 
         Returns:
             Dict: A dictionary containing information about the environment.
         """
-
-        return {}
+        contact_ids = gm.hand_object_contact_ids(
+            self.model, self.data, self._hand_body_ids, self._object_body_ids
+        )
+        score = gm.contact_score(self.model, self.data, contact_ids)
+        info = {
+            "n_contacts": score.n_contacts,
+            "total_normal_force": score.total_normal_force,
+            "grasped": gm.binary_grasp_state(score),
+        }
+        info.update(self._episode_grasp_metrics)
+        return info
 
     def step(self, action: ArrayLike) -> tuple[NDArray, int, bool, bool, dict]:
         """

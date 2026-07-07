@@ -88,6 +88,55 @@ def remove_body(model: MjModel, data: MjData, name: str) -> None:
     mujoco.mj_forward(model, data)
 
 
+def get_body_subtree_ids(model: MjModel, root_body_name: str) -> list[int]:
+    """Get the ids of a body and all of its descendants in the kinematic tree.
+
+    Useful for determining which geoms/bodies belong to a robot or object
+    without relying on a geom naming convention (some models leave collision
+    geoms unnamed).
+
+    Args:
+        model (MjModel): mj_Model struct
+        root_body_name (str): name of the root body of the subtree
+
+    Returns:
+        List[int]: ids of the root body and all descendant bodies
+    """
+    root_id = name2id(model, root_body_name, "body")
+    ids = [root_id]
+    changed = True
+    while changed:
+        changed = False
+        for b in range(model.nbody):
+            if b not in ids and model.body_parentid[b] in ids:
+                ids.append(b)
+                changed = True
+    return ids
+
+
+def get_direct_child_body_names(model: MjModel, root_body_name: str) -> list[str]:
+    """Get the names of the direct children of a body.
+
+    Used to split a composite object (e.g. multiple flexcomp parts) into its
+    constituent parts for per-part measures, without assuming a fixed set of
+    part names.
+
+    Args:
+        model (MjModel): mj_Model struct
+        root_body_name (str): name of the parent body
+
+    Returns:
+        List[str]: names of direct child bodies (unnamed children are
+            skipped since they cannot be referred to by name)
+    """
+    root_id = name2id(model, root_body_name, "body")
+    return [
+        model.body(b).name
+        for b in range(model.nbody)
+        if model.body_parentid[b] == root_id and model.body(b).name != ""
+    ]
+
+
 def get_body_pose(model: MjModel, data: MjModel, name: str) -> Pose:
     names = get_body_names(model)
     assert (

@@ -77,8 +77,11 @@ class BaseMJEnv(gym.Env, ABC):
     ):
         self.scene = am.create_scene(robot_name, obj_name)
         self.model, self.data = mju.load_model_from_string(self.scene)
+        self.model.opt.enableflags |= mujoco.mjtEnableBit.mjENBL_ENERGY
         self.robot = RobotFactory.create(robot_name, control_type)
         self.object = ObjectFactory.create(obj_name)
+        self._hand_body_ids = mju.get_body_subtree_ids(self.model, self.robot.name)
+        self._object_body_ids = mju.get_body_subtree_ids(self.model, self.object.name)
         self.frame_skip = frame_skip
         self.observable_object_pos = observable_object_pos
         self.control_type = control_type
@@ -191,6 +194,9 @@ class BaseMJEnv(gym.Env, ABC):
 
         super().reset(seed=seed, options=options)
         self.model, _ = mju.load_model_from_string(self.scene)
+        self.model.opt.enableflags |= mujoco.mjtEnableBit.mjENBL_ENERGY
+        self._hand_body_ids = mju.get_body_subtree_ids(self.model, self.robot.name)
+        self._object_body_ids = mju.get_body_subtree_ids(self.model, self.object.name)
         mujoco.mj_resetData(self.model, self.data)
         self.robot.set_pose(
             self.model, self.data, self.robot.init_pose.get(self.object.name)

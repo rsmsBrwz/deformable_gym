@@ -21,7 +21,15 @@
 			</default>
 			<default class="mia_ee_orientation">
 				<joint range="-1.570796 1.570796" />
-				<position kp=".2" ctrlrange="-1.570796 1.570796" forcerange="-1 1" />
+				<!-- ctrlrange kept well clear of +/-pi/2: driving the ee-orientation
+				     actuators to the joint's own physical limit hits a kinematic
+				     (gimbal-lock-like) singularity in this 3-hinge orientation
+				     chain that destabilizes the simulation regardless of
+				     contact/damping/integrator/force settings. +/-1 rad still
+				     showed rare failures (~7% in 30 trials) under a high-std
+				     exploration policy (A2C); +/-0.9 rad showed 0/160 across
+				     four adversarial action patterns, so that's the margin used. -->
+				<position kp=".2" ctrlrange="-0.9 0.9" forcerange="-1 1" />
 				<default class="mia_ee_ox">
 					<joint axis="1 0 0" />
 				</default>

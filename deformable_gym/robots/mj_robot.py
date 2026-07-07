@@ -17,6 +17,23 @@ SLIDE_CTRL_RANGE = [-0.005, 0.005]
 HINGE_CTRL_RANGE = [-np.pi / 180, np.pi / 180]
 
 
+def _clip_to_ctrlrange(
+    model: mujoco.MjModel, actuator_id: int, value: float
+) -> float:
+    """Clip a control value to the actuator's declared ctrlrange, if any.
+
+    ``set_ctrl`` accumulates each action onto the actuator's current control
+    value (relative/incremental control). Without clipping, a sustained
+    biased action (e.g. an undertrained policy) drives the control value far
+    past the actuator's physical range, which can destabilize the
+    simulation (NaN/Inf in qacc) regardless of which object is grasped.
+    """
+    if model.actuator_ctrllimited[actuator_id]:
+        lo, hi = model.actuator_ctrlrange[actuator_id]
+        return float(np.clip(value, lo, hi))
+    return value
+
+
 class MJRobot(ABC):
     """
     Abstract base class for creating robot instances in a MuJoCo simulation environment.
@@ -165,6 +182,7 @@ class MJRobot(ABC):
         for i, act in enumerate(self.actuators):
             actuator_id = mju.name2id(self.model, act, "actuator")
             new_ctrl = data.ctrl[actuator_id] + ctrl[i]
+            new_ctrl = _clip_to_ctrlrange(model, actuator_id, new_ctrl)
             mju.set_actuator_ctrl(model, data, act, new_ctrl)
 
 
@@ -312,6 +330,7 @@ class MiaHand(MJRobot):
     ) -> None:
         act_id = mju.name2id(self.model, "j_middle_fle_A", "actuator")
         new_ctrl = data.ctrl[act_id] + ctrl
+        new_ctrl = _clip_to_ctrlrange(model, act_id, new_ctrl)
         for act in self.mrl_actuators:
             mju.set_actuator_ctrl(model, data, act, new_ctrl)
 
@@ -328,6 +347,7 @@ class MiaHand(MJRobot):
             else:
                 act_id = mju.name2id(self.model, act, "actuator")
                 new_ctrl = data.ctrl[act_id] + ctrl[i]
+                new_ctrl = _clip_to_ctrlrange(model, act_id, new_ctrl)
                 mju.set_actuator_ctrl(model, data, act, new_ctrl)
 
 

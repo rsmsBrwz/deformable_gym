@@ -1,0 +1,76 @@
+<mujoco>
+	<!-- <include file="floor.xml"/> -->
+	<compiler meshdir="../../meshes/" />
+	<extension>
+		<plugin plugin="mujoco.elasticity.solid" />
+	</extension>
+	<worldbody>
+		<body name="boxes">
+			<body name="box_left" pos="-0.045 0 0.02">
+				<flexcomp name="box_left" mass="0.5" dim="3" type="gmsh" file="box.msh" rgba="0.3 0.6 0.9 1" radius="0.001">
+					<edge equality="true" />
+					<plugin plugin="mujoco.elasticity.solid">
+						<config key="young" value="1e4" />
+						<config key="poisson" value="0.1" />
+						<config key="damping" value="1e-4" />
+					</plugin>
+				</flexcomp>
+			</body>
+			<body name="box_center" pos="0 0 0.02">
+				<flexcomp name="box_center" mass="0.5" dim="3" type="gmsh" file="box.msh" rgba="0.9 0.4 0.3 1" radius="0.001">
+					<edge equality="true" />
+					<plugin plugin="mujoco.elasticity.solid">
+						<config key="young" value="1e4" />
+						<config key="poisson" value="0.1" />
+						<config key="damping" value="1e-4" />
+					</plugin>
+				</flexcomp>
+			</body>
+			<body name="box_right" pos="0.045 0 0.02">
+				<flexcomp name="box_right" mass="0.5" dim="3" type="gmsh" file="box.msh" rgba="0.4 0.8 0.2 1" radius="0.001">
+					<edge equality="true" />
+					<plugin plugin="mujoco.elasticity.solid">
+						<config key="young" value="1e4" />
+						<config key="poisson" value="0.1" />
+						<config key="damping" value="1e-4" />
+					</plugin>
+				</flexcomp>
+			</body>
+		</body>
+	</worldbody>
+	<!-- Anchors each box against gravity during the main episode, mirroring
+	     insole_fixed.xml/pillow_fixed.xml's "fix_*" welds. Without this, the
+	     boxes have no constraint tying their overall position to anything
+	     (the <edge equality> above only keeps each box's own shape rigid) and
+	     free-fall to the floor within ~0.3s regardless of the policy's
+	     actions. _pause_simulation() already disables every equality
+	     constraint returned by eq_constraints_to_disable at episode end, so
+	     these welds are released for the final drop/height check exactly
+	     like insole/pillow's, with no code changes needed. -->
+	<equality>
+		<weld name="fix_box_left_0" body1="box_left_0" body2="box_left" />
+		<weld name="fix_box_left_1" body1="box_left_1" body2="box_left" />
+		<weld name="fix_box_left_2" body1="box_left_2" body2="box_left" />
+		<weld name="fix_box_left_3" body1="box_left_3" body2="box_left" />
+		<weld name="fix_box_left_4" body1="box_left_4" body2="box_left" />
+		<weld name="fix_box_left_5" body1="box_left_5" body2="box_left" />
+		<weld name="fix_box_left_6" body1="box_left_6" body2="box_left" />
+		<weld name="fix_box_left_7" body1="box_left_7" body2="box_left" />
+		<weld name="fix_box_center_0" body1="box_center_0" body2="box_center" />
+		<weld name="fix_box_center_1" body1="box_center_1" body2="box_center" />
+		<weld name="fix_box_center_2" body1="box_center_2" body2="box_center" />
+		<weld name="fix_box_center_3" body1="box_center_3" body2="box_center" />
+		<weld name="fix_box_center_4" body1="box_center_4" body2="box_center" />
+		<weld name="fix_box_center_5" body1="box_center_5" body2="box_center" />
+		<weld name="fix_box_center_6" body1="box_center_6" body2="box_center" />
+		<weld name="fix_box_center_7" body1="box_center_7" body2="box_center" />
+		<weld name="fix_box_right_0" body1="box_right_0" body2="box_right" />
+		<weld name="fix_box_right_1" body1="box_right_1" body2="box_right" />
+		<weld name="fix_box_right_2" body1="box_right_2" body2="box_right" />
+		<weld name="fix_box_right_3" body1="box_right_3" body2="box_right" />
+		<weld name="fix_box_right_4" body1="box_right_4" body2="box_right" />
+		<weld name="fix_box_right_5" body1="box_right_5" body2="box_right" />
+		<weld name="fix_box_right_6" body1="box_right_6" body2="box_right" />
+		<weld name="fix_box_right_7" body1="box_right_7" body2="box_right" />
+	</equality>
+</mujoco>
