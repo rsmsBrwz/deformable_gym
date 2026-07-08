@@ -1,8 +1,8 @@
 # Deformable-Grasp-RL (Boxes/mia_hand): Gesamt-Session-Kontext & Erkenntnisse
 
-**Zweck dieses Dokuments:** (1) Kontext-Datei für die Fortsetzung dieser Arbeit in einer neuen Session, (2) Rohnotizen für schriftliche Ausarbeitungen zum Thema. Fasst eine mehrtägige Arbeitssession (2026-07-03 bis 2026-07-07) zusammen: von "Environment testen" über eine tiefe Simulationsinstabilitäts-Diagnose bis zu vier Iterationen einer Reward-Shaping-Ablationsstudie.
+**Zweck dieses Dokuments:** (1) Kontext-Datei für die Fortsetzung dieser Arbeit in einer neuen Session, (2) Rohnotizen für schriftliche Ausarbeitungen zum Thema. Fasst eine mehrtägige Arbeitssession (2026-07-03 bis 2026-07-08) zusammen: von "Environment testen" über eine tiefe Simulationsinstabilitäts-Diagnose bis zu fünf Iterationen einer Reward-Shaping-/Curriculum-Ablationsstudie.
 
-**Repo:** `deformable_gym`, Branch `development`. **Wichtig:** Alle unten beschriebenen Code-Änderungen sind zum Zeitpunkt dieses Dokuments **noch nicht committed** (siehe `git status` – alles als `M`/`??`). Vor dem nächsten Schritt ggf. committen, um sauberen Provenienz-Bezug für weitere Experimente zu haben (das wurde in `REWARD_SHAPING_ABLATION.md` bereits als Lücke vermerkt).
+**Repo:** `deformable_gym`, Branch `development`. **Provenienz:** Der ursprüngliche Commit `d5d5fad` referenzierte in seiner Nachricht mehrere neue Dateien (`grasp_metrics.py`, `shaped_grasp_env.py`, `boxes.xml`, `reward_profiles.py`, `run_reward_ablation.py`, `analyze_results.py`, alle drei Doku-Dateien), die tatsächlich als `??` (untracked) im Repo lagen statt committed zu sein – eine Lücke aus einem vorherigen `git add`, die erst am 2026-07-08 per `git commit --amend` (kein Remote-Tracking auf diesem Branch, daher unproblematisch) geschlossen wurde; aktueller Hash dafür: `ad663f4`. Iteration 5 (Warmstart-Curriculum, s.u.) ist als eigener Commit `81868c3` sauber getrennt. Damit ist der Hinweis aus früheren Versionen dieses Dokuments ("noch nicht committed") überholt.
 
 ---
 
@@ -69,12 +69,12 @@ Ziel zu Beginn: Ein neues, ungetestetes MuJoCo-Environment (`MjFloatingMiaGraspB
 |---|---|
 | `deformable_gym/helpers/mj_utils.py` | + `get_body_subtree_ids`, `get_direct_child_body_names` |
 | `deformable_gym/helpers/grasp_metrics.py` (neu) | `ContactScore`, `hand_object_contact_ids`, `contact_score`, `binary_grasp_state`, `object_retained_ratio`, `energy_quality`, `dynamic_stability_probe` (inkl. `settle_step`) |
-| `deformable_gym/envs/mujoco/base_mjenv.py` | Energie-Flag (`mjENBL_ENERGY`), gecachte Hand-/Objekt-Body-IDs |
-| `deformable_gym/envs/mujoco/grasp_env.py` | Info-Dict-Integration der Grasp-Measures (episodische Keys immer NaN-vorbelegt, damit SB3 `Monitor(info_keywords=...)` nie crasht) |
+| `deformable_gym/envs/mujoco/base_mjenv.py` | Energie-Flag (`mjENBL_ENERGY`), gecachte Hand-/Objekt-Body-IDs; **neu (Iteration 5):** `warm_start_joint_targets`-Kwarg + `_apply_warm_start()`, setzt qpos **und** das treibende Aktuator-`ctrl` beim Reset, Default `None` verhält sich bit-identisch zum alten Code |
+| `deformable_gym/envs/mujoco/grasp_env.py` | Info-Dict-Integration der Grasp-Measures (episodische Keys immer NaN-vorbelegt, damit SB3 `Monitor(info_keywords=...)` nie crasht); reicht `warm_start_joint_targets` an `BaseMJEnv` durch |
 | `deformable_gym/robots/mj_robot.py` | `_clip_to_ctrlrange()`-Helper (Bug #6 oben) |
 | `deformable_gym/assets/robots/mjcf/mia_hand.xml` | ee-Orientierung `ctrlrange` `±1.5708 → ±0.9` (Hauptfix #7) |
 | `deformable_gym/assets/objects/mjcf/boxes.xml` | 24 Weld-Constraints ergänzt (Fix #2, s.o.) |
-| `deformable_gym/envs/mujoco/shaped_grasp_env.py` (neu) | `ShapedGraspEnv(GraspEnv)` – 4-stufige Reward-Architektur, s. Abschnitt 6 |
+| `deformable_gym/envs/mujoco/shaped_grasp_env.py` (neu) | `ShapedGraspEnv(GraspEnv)` – 4-stufige Reward-Architektur, s. Abschnitt 6; **Iteration 5:** Phase-3-Rewards (Retention/Energie/Dynamic) jetzt auf `retained_ratio > 0` gegatet |
 | `deformable_gym/__init__.py` | `register_mj_grasp_envs_shaped()` – neue Env-IDs `Mj*Grasp*Shaped-v0`, rein additiv |
 | `pipeline.py` (komplette Neufassung + mehrere Erweiterungen) | Watchdog-Subprozess-Architektur, `NanSafeWrapper`, `GraspMetricsEvalCallback` (inkl. Best-Checkpoint-Tracking), `env_kwargs`-Durchreichung |
 | `reward_profiles.py` (neu) | 4 benannte Reward-Profile: `sparse`, `phase1`, `phase1_2`, `phase1_2_3` |
@@ -126,7 +126,8 @@ Alle über `run_reward_ablation.py`, Ergebnisse jeweils gesichert (nicht übersc
 | Zwischenschritt | – | Root-Cause gefunden: Boxen fallen (s. Abschnitt 4) mangels Weld-Constraint. Fix umgesetzt. |
 | 2 (200k, nach Weld-Fix) | `results/ablation_200k_iter2/` | Fix technisch korrekt (Box fällt nicht mehr), **aber Kontakt bleibt weiterhin bei 0** in allen abgeschlossenen Läufen. Erste Erkenntnis: Fix war nötig, aber nicht hinreichend. |
 | 3 (2 Mio., reduziert auf `sparse`+`phase1_2_3`) | `results/ablation_2m_iter3/` | **Wichtigster Zwischenbefund:** `sparse/A2C` zeigte bei 900k–1.2M Schritten `n_contacts=1, grasped=True, reward=0` – aber gleichzeitig `sim_unstable_mean=1.0`. Verdacht: Instabilitäts-Artefakt, kein echter Erfolg. DDPG/TD3 zeigten Politik-Kollaps (dauerhaft instabil ab 100k) bzw. komplettes Einfrieren (identischer Reward über alle 2 Mio. Schritte). **50% Timeout-Quote**, höher als bei kürzeren Läufen. |
-| 4 (400k, alle 4 Profile, mit Best-Checkpoint-Tracking) | `results/ablation/` (aktuell) | **Bestätigt:** Score-basierte Best-Checkpoint-Auswahl (die Instabilität herausrechnet) zeigt über **alle 20 Läufe** `best_n_contacts_mean=0.0` – der A2C-Befund aus Iteration 3 war tatsächlich ein Instabilitäts-Artefakt. Über 4 Iterationen (>40 Läufe) **kein einziger instabilitätsbereinigter echter Grasp-Erfolg**. Erneut ~50% Timeout-Quote, gleichmäßig über alle Profile (auch `sparse`) verteilt. |
+| 4 (400k, alle 4 Profile, mit Best-Checkpoint-Tracking) | `results/ablation_400k_iter4/` | **Bestätigt:** Score-basierte Best-Checkpoint-Auswahl (die Instabilität herausrechnet) zeigt über **alle 20 Läufe** `best_n_contacts_mean=0.0` – der A2C-Befund aus Iteration 3 war tatsächlich ein Instabilitäts-Artefakt. Über 4 Iterationen (>40 Läufe) **kein einziger instabilitätsbereinigter echter Grasp-Erfolg**. Erneut ~50% Timeout-Quote, gleichmäßig über alle Profile (auch `sparse`) verteilt. |
+| 5 (400k, 3 neue Warmstart-Profile × 5 Algo, läuft) | `results/ablation/` (aktuell, in Arbeit) | Umsetzung des naheliegendsten offenen Hebels aus Iteration 4 (Curriculum/Warmstart): Hand startet direkt über der linken Box statt in Zufallsdistanz. Kalibrierung per Zero-Action-Rollout zeigt `grasped`-Anteil 99.8 % (vs. 27 % Standardpose) – die Vorbedingung für Kontakt ist damit erfüllt, sofern das RL-Training das ausnutzt. Läuft seit 2026-07-08 im Hintergrund (`ablation_v5_warmstart.log`), Ergebnis steht noch aus. Zusätzlich: Phase-3-Sockelbonus-Lücke aus Iteration 1 geschlossen (Gate auf `retained_ratio > 0`). |
 
 ### Widerlegte Hypothese: "Mehr Trainingsschritte lösen das Kontaktproblem"
 
@@ -138,12 +139,13 @@ Best-Checkpoint-Tracking (Iteration 4) mit instabilitätsbereinigter Score-Funkt
 
 ## 9. Offene Fragen / Empfehlungen für die nächste Session
 
-1. **Curriculum/Warmstart:** Episode testweise mit bereits leicht geschlossenen Fingern oder in Griffnähe starten lassen, statt Greifverhalten aus komplett zufälliger Exploration entdecken zu müssen – naheliegendster nächster Hebel, da "mehr Zeit" und "bessere Metrik" beide widerlegt sind.
+1. **Iteration-5-Ergebnis auswerten (läuft):** Sobald `results/ablation/summary.csv` vollständig ist (`analyze_results.py --results-dir ./results/ablation`), prüfen ob `best_n_contacts_mean`/`best_grasped_mean` bei den Warmstart-Profilen jetzt > 0 sind. Falls ja: erste echte Bestätigung, dass die Aufgabe lösbar ist und der Engpass tatsächlich die Startbedingung war. Falls weiterhin 0: würde eher auf ein Trainings-/Algorithmus-Problem als auf die Kontakt-Anbahnung hindeuten (dann Punkt 2 vorziehen).
 2. **Algorithmus-Hyperparameter statt Trainingsdauer:** Explorationsrauschen/Netzwerkgröße/Lernraten der einzelnen SB3-Algorithmen gezielt untersuchen.
 3. **~50%-Timeout-Quote als eigenständiges Problem:** Tritt gleichmäßig über alle Profile auf (kein Shaping-Effekt erkennbar) – mit mehreren Seeds prüfen, ob das reproduzierbar an bestimmten Algorithmus/Profil-Kombinationen hängt oder zufällig verteilt ist. Bislang nur mit **1 Seed** gearbeitet (Zeitbudget-Entscheidung) – Konfidenz aller Ablationsbefunde entsprechend begrenzt.
-4. `reward_retention`/`reward_dynamic` (Phase 3) sollten auf `retained_ratio > 0` gegatet werden, um den kontaktunabhängigen Sockelbonus zu vermeiden (Kernbefund aus Iteration 1, technisch noch nicht umgesetzt).
-5. **Provenienz:** Vor weiteren Iterationen den aktuellen Stand committen (siehe Hinweis oben) – bislang unterscheidet der Git-Hash die Iterationen nicht, da alle Asset-/Code-Änderungen uncommitted sind.
+4. ~~`reward_retention`/`reward_dynamic` (Phase 3) sollten auf `retained_ratio > 0` gegatet werden~~ – **erledigt in Iteration 5** (`shaped_grasp_env.py`, Commit `81868c3`).
+5. ~~**Provenienz:** Vor weiteren Iterationen den aktuellen Stand committen~~ – **erledigt am 2026-07-08**, s. Provenienz-Hinweis oben.
 6. `energy_quality` bleibt eine grobe Näherung (mischt Gravitations-/Elastizitätsenergie) – für eine sauberere Trennung wäre ein plugin-spezifischer Zugriff auf die Elastizitäts-Energie nötig (in MuJoCo aktuell nicht direkt exponiert).
+7. Die Warmstart-Zielpose (Iteration 5) ist auf **eine** Box (`box_left`) kalibriert, nicht auf alle drei symmetrisch – für eine spätere Verallgemeinerung (z. B. zufällige Box-Auswahl pro Episode) müsste die Pose relativ zur tatsächlichen Objektposition berechnet werden statt als fixer Offset.
 
 ## 10. Schnellreferenz: Wie reproduziere ich was
 
@@ -156,6 +158,9 @@ python run_reward_ablation.py --total-timesteps 400000 --eval-freq 20000
 
 # Reduzierte Ablation (nur 2 Profile, für schnelleren Vergleich)
 python run_reward_ablation.py --profiles sparse phase1_2_3 --total-timesteps 2000000 --run-timeout-minutes 480
+
+# Iteration 5: nur die Warmstart-Profile
+python run_reward_ablation.py --profiles sparse_warmstart phase1_warmstart phase1_2_3_warmstart --total-timesteps 400000 --eval-freq 20000
 
 # Reporting für einen beliebigen results-Ordner
 python analyze_results.py --results-dir ./results/ablation

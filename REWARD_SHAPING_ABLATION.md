@@ -187,3 +187,21 @@ Die "vielleicht haben wir nur falsch ausgewertet"-Hypothese ist damit widerlegt;
 1. **Curriculum/Warmstart statt reinem Zufall:** Episode testweise mit bereits leicht geschlossenen Fingern oder in Griffnähe startend, um der Policy einen realistischen Ausgangspunkt zu geben, statt Grasp-Verhalten aus komplett zufälliger Exploration entdecken zu müssen.
 2. **Algorithmus-Hyperparameter statt Trainingsdauer:** Da weder 200k, 400k noch 2 Mio. Schritte einen Unterschied gemacht haben, liegt der Hebel vermutlich nicht mehr in "mehr Schritte", sondern in Explorationsrauschen/Netzwerkgröße/Lernraten der einzelnen Algorithmen.
 3. **Instabilitätsrate (~50 % über alle Iterationen hinweg) als eigenständiges Problem behandeln**, unabhängig vom Reward-Shaping – z. B. mit mehreren Seeds prüfen, ob das reproduzierbar bei denselben Algorithmus/Profil-Kombinationen auftritt oder tatsächlich zufällig verteilt ist.
+
+## Iteration 5: Warmstart-Curriculum (Empfehlung 1 aus Iteration 4)
+
+**Umsetzung:** Neuer opt-in Konstruktor-Kwarg `warm_start_joint_targets: dict[str, float] | None` auf `BaseMJEnv` (und durchgereicht durch `GraspEnv`/`ShapedGraspEnv`), Default `None` (reproduziert das alte Verhalten bit-identisch). Bei jedem `reset()` werden die angegebenen Joints auf einen festen `qpos`-Zielwert gesetzt; da Position-Aktuatoren gegen ihren `ctrl`-Wert servoen, muss zusätzlich der `ctrl`-Wert des jeweils treibenden Aktuators auf denselben Zielwert gesetzt werden – sonst würde der allererste `mj_step` den Joint per Regelung zurück Richtung 0 ziehen und den Warmstart sofort wieder aufheben (siehe `_apply_warm_start` in `base_mjenv.py`).
+
+**Kalibrierung der Zielpose:** Reine Fingerflexion (wie ursprünglich naheliegend angenommen) hat sich als wirkungslos bis kontraproduktiv erwiesen – ein Zero-Action-Rollout-Sweep (700 Schritte, Seeds 0–2) zeigte `grasped`-Anteil 19 % bei 0.3 rad Flexion und 0 % ab 0.7 rad (die Finger krümmen sich von der Box weg statt zu ihr hin). Ursache: Bei Reset ist die Hand nicht in unmittelbarer Kontaktnähe zur Box, sondern nur zufällig/lose in der Nähe – Fingerflexion allein bringt keinen Kontakt zustande. Ein zusätzlicher, empirisch ermittelter Positions-Offset der Hand-Basis (`ee_X=-0.04`, `ee_Y=+0.06`, über die linke Box) kombiniert mit 0.3 rad Fingerflexion brachte den entscheidenden Unterschied: `grasped`-Anteil 99.8 % über die volle Episode (vs. 27 % bei Standardpose, Seeds 0–2). Nebenbefund bei der Kalibrierung: Die `ee_X`/`ee_Y`-Slide-Joints sind **nicht weltachsen-ausgerichtet** – `ee_X` bewegt die Hand entlang Welt-`+y`, `ee_Y` entlang Welt-`+x`, `ee_Z` entlang Welt-`-z` (verifiziert per direkter `xpos`-Messung vor/nach Warmstart-Anwendung).
+
+Drei neue Reward-Profile in `reward_profiles.py` (`sparse_warmstart`, `phase1_warmstart`, `phase1_2_3_warmstart`), die exakt den bisherigen sparse/phase1/phase1_2_3-Profilen entsprechen, aber mit dieser kalibrierten Startpose. Kein bestehendes Profil wurde verändert – Vergleichbarkeit zu Iteration 1–4 bleibt erhalten.
+
+**Zusätzlicher Fix im selben Commit:** `_compute_terminal_stability_reward` (`shaped_grasp_env.py`) gatet jetzt alle drei Phase-3-Komponenten (Retention/Energie/Dynamic-Stability) auf `retained_ratio > 0` – die in Iteration 1 dokumentierte Lücke (Empfehlung 4), die bislang unverändert offen war. Ohne dieses Gate hätte `phase1_2_3_warmstart` sonst denselben kontaktunabhängigen Sockelbonus wie in Iteration 1 mit sich geführt.
+
+**Lauf:** Alle 3 Warmstart-Profile × 5 Algorithmen, 1 Seed, 400.000 Schritte (gleiche Skala wie Iteration 4, für direkte Vergleichbarkeit). Ergebnisse in `results/ablation/`; Iteration-4-Daten (400k, alle 4 Original-Profile) gesichert unter `results/ablation_400k_iter4/`.
+
+```bash
+python run_reward_ablation.py --profiles sparse_warmstart phase1_warmstart phase1_2_3_warmstart --algorithms PPO SAC TD3 A2C DDPG --total-timesteps 400000 --eval-freq 20000
+```
+
+Gestartet am 2026-07-08 im Hintergrund (Log: `ablation_v5_warmstart.log`); Ergebnisse und Auswertung folgen in einer Aktualisierung dieses Abschnitts, sobald der Lauf abgeschlossen ist.
