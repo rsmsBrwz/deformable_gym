@@ -46,6 +46,7 @@ class GraspEnv(BaseMJEnv):
         default_cam_config: dict[str, Any] | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        warm_start_joint_targets: dict[str, float] | None = None,
     ):
         super().__init__(
             robot_name,
@@ -60,6 +61,7 @@ class GraspEnv(BaseMJEnv):
             default_cam_config,
             camera_name,
             camera_id,
+            warm_start_joint_targets,
         )
 
         self.reward_range = (-1, 1)

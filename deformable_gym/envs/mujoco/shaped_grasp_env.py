@@ -159,7 +159,15 @@ class ShapedGraspEnv(GraspEnv):
         metrics = self._episode_grasp_metrics
 
         retained = metrics.get("retained_ratio", float("nan"))
-        reward_retention = self.w_retained * (retained if np.isfinite(retained) else 0.0)
+        # Gate the whole terminal-stability block on the hand actually
+        # retaining part of the object: dynamic_stability_probe scores a
+        # never-grasped object resting on the floor as perfectly stable,
+        # which paid a contact-independent base bonus (~+0.05) in ablation
+        # iteration 1 and made phase-3 profiles incomparable to the rest.
+        if not (np.isfinite(retained) and retained > 0.0):
+            zeros = {"reward_retention": 0.0, "reward_energy": 0.0, "reward_dynamic": 0.0}
+            return 0.0, zeros
+        reward_retention = self.w_retained * retained
 
         kinetic_after = metrics.get("energy_kinetic_after", float("nan"))
         if np.isfinite(kinetic_after):

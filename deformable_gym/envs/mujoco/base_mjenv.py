@@ -74,7 +74,15 @@ class BaseMJEnv(gym.Env, ABC):
         default_cam_config: dict[str, Any] | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        warm_start_joint_targets: dict[str, float] | None = None,
     ):
+        # Opt-in curriculum/warm-start: joint name -> target qpos applied at
+        # every reset(), instead of the RL policy having to discover a good
+        # starting configuration (e.g. partially closed fingers) via random
+        # exploration alone. None (default) reproduces the original
+        # behavior exactly. See _apply_warm_start for why both qpos and the
+        # driving actuator's ctrl must be set together.
+        self.warm_start_joint_targets = warm_start_joint_targets
         self.scene = am.create_scene(robot_name, obj_name)
         self.model, self.data = mju.load_model_from_string(self.scene)
         self.model.opt.enableflags |= mujoco.mjtEnableBit.mjENBL_ENERGY
@@ -206,10 +214,34 @@ class BaseMJEnv(gym.Env, ABC):
         )
         if self.init_frame is not None:
             self._load_keyframe(self.init_frame)
+        if self.warm_start_joint_targets is not None:
+            self._apply_warm_start(self.warm_start_joint_targets)
         if self.control_type == "mocap":
             if not self.mocap.eq_is_active(self.model, self.data):
                 self.mocap.enable_eq(self.model, self.data)
             self.mocap.attach_mocap2weld_body(self.model, self.data)
+
+    def _apply_warm_start(self, joint_targets: dict[str, float]) -> None:
+        """Set specific joints to a target qpos at reset (e.g. partially
+        flexed fingers), and set any actuator driving one of those joints
+        to the same target.
+
+        Setting qpos alone is not enough: a position actuator servos
+        toward its ctrl value (0 by default after mj_resetData), so without
+        also updating ctrl, the very first mj_step would yank the joint
+        back toward 0 and undo the warm start (and can itself be a source
+        of a large, destabilizing initial transient).
+        """
+        for joint_name, target in joint_targets.items():
+            joint_id = mju.name2id(self.model, joint_name, "joint")
+            qpos_addr = self.model.jnt_qposadr[joint_id]
+            self.data.qpos[qpos_addr] = target
+        for act_id in range(self.model.nu):
+            joint_id = self.model.actuator_trnid[act_id, 0]
+            joint_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_id)
+            if joint_name in joint_targets:
+                self.data.ctrl[act_id] = joint_targets[joint_name]
+        mujoco.mj_forward(self.model, self.data)
 
     def _set_state(
         self,
