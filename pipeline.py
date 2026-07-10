@@ -309,6 +309,7 @@ def run_single(
     run_dir: str,
     result_queue: mp.Queue,
     env_kwargs: dict | None = None,
+    algo_kwargs: dict | None = None,
 ) -> None:
     """Train+evaluate one (env, algorithm, seed) combination.
 
@@ -320,6 +321,10 @@ def run_single(
     env_kwargs (e.g. ShapedGraspEnv reward weights) are passed through to
     gym.make() for both the training and eval env -- see
     reward_profiles.py / run_reward_ablation.py for how this is used.
+
+    algo_kwargs (e.g. learning_rate, ent_coef, policy_kwargs) are passed
+    through to the SB3 algorithm constructor, overriding its defaults --
+    see hparam_configs.py / run_hparam_sweep.py.
     """
     algo_class = ALGORITHMS[algo_name]
     print(f"=== {env_id} / {algo_name} / seed {seed} ===")
@@ -332,7 +337,7 @@ def run_single(
     )
     eval_env = make_env(env_id, seed + 999, args.max_episode_steps, args.render, env_kwargs)
 
-    model = algo_class("MlpPolicy", train_env, verbose=0, seed=seed)
+    model = algo_class("MlpPolicy", train_env, verbose=0, seed=seed, **(algo_kwargs or {}))
     model.set_logger(configure(run_dir, ["stdout", "csv", "tensorboard"]))
 
     eval_callback = GraspMetricsEvalCallback(
@@ -378,6 +383,7 @@ def run_with_watchdog(
     args: argparse.Namespace,
     run_dir: str,
     env_kwargs: dict | None = None,
+    algo_kwargs: dict | None = None,
 ) -> dict:
     """Run run_single in a subprocess, killing it if it stalls or runs too long.
 
@@ -390,7 +396,7 @@ def run_with_watchdog(
     result_queue = ctx.Queue()
     process = ctx.Process(
         target=run_single,
-        args=(env_id, algo_name, seed, args, run_dir, result_queue, env_kwargs),
+        args=(env_id, algo_name, seed, args, run_dir, result_queue, env_kwargs, algo_kwargs),
     )
     process.start()
 
