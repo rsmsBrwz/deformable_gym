@@ -204,4 +204,40 @@ Drei neue Reward-Profile in `reward_profiles.py` (`sparse_warmstart`, `phase1_wa
 python run_reward_ablation.py --profiles sparse_warmstart phase1_warmstart phase1_2_3_warmstart --algorithms PPO SAC TD3 A2C DDPG --total-timesteps 400000 --eval-freq 20000
 ```
 
-Gestartet am 2026-07-08 im Hintergrund (Log: `ablation_v5_warmstart.log`); Ergebnisse und Auswertung folgen in einer Aktualisierung dieses Abschnitts, sobald der Lauf abgeschlossen ist.
+Gestartet am 2026-07-08 im Hintergrund (Log: `ablation_v5_warmstart.log`), abgeschlossen am 2026-07-10 (alle 15 Läufe durchgelaufen bzw. per Watchdog beendet).
+
+### Laufstatus
+
+8 von 15 Läufen (53 %) per Watchdog beendet – im selben Bereich wie die ~50 % aus Iteration 3/4, Warmstart hat daran nichts geändert. Verteilung: `sparse_warmstart` 2/5, `phase1_warmstart` 2/5, `phase1_2_3_warmstart` 4/5 (PPO/SAC/TD3/A2C, nur DDPG vollständig).
+
+### Best-Checkpoint-Übersicht (alle 15 Läufe)
+
+| Profil | Algo | `best_n_contacts_mean` | `best_grasped_mean` | `best_step` | Status |
+|---|---|---|---|---|---|
+| sparse_warmstart | PPO/SAC/TD3/A2C/DDPG | 0.0 (alle 5) | 0.0 (alle 5) | 20000 (alle 5) | 2× Timeout (PPO, TD3) |
+| phase1_warmstart | PPO | 13.0 | 1.0 | 80000 | Timeout |
+| phase1_warmstart | SAC | 0.0 | 0.0 | 240000 | vollständig |
+| phase1_warmstart | TD3 | 3.0 | 1.0 | 20000 | vollständig |
+| phase1_warmstart | A2C | 0.0 | 0.0 | 20000 | Timeout |
+| phase1_warmstart | DDPG | **11.0** | **1.0** | 20000 | vollständig |
+| phase1_2_3_warmstart | PPO/SAC/TD3/A2C | 0.0 (alle 4) | 0.0 (alle 4) | – | 4× Timeout |
+| phase1_2_3_warmstart | DDPG | 0.0 | 0.0 | 60000 | vollständig |
+
+### Kernbefund: Kein Lauf zeigt echtes gelerntes Greifen – auch der scheinbare Erfolg ist ein Policy-Kollaps-Artefakt
+
+`sparse_warmstart` bleibt bei 0/5 durchgängig erfolglos, exakt wie in allen Voriterationen – die Warmstart-Pose allein bringt ohne dichtes Reward-Signal (Phase 1) keinen Unterschied gegenüber Zufallsstart.
+
+Zwei `phase1_warmstart`-Läufe (PPO, TD3) reproduzieren das aus dem Zwischenstand bekannte fragile Muster: PPO nur ein isolierter Ausreißer bei Schritt 80.000 (davor/danach `n_contacts=0`), TD3 nur beim allerersten Checkpoint (20.000) mit anschließendem eingefrorenem Reward (0.0906, `action_saturation=1.0`) über die restlichen 19 Checkpoints.
+
+**`phase1_warmstart/DDPG` ist der einzige Lauf mit augenscheinlich anhaltendem Erfolg** (`n_contacts=11`, `grasped=1.0`, Reward 7.02) – aber die Werte sind **bit-identisch über alle 20 Eval-Checkpoints von Schritt 20.000 bis 400.000** (`grasp_stability.csv` geprüft: `mean_reward`, `n_contacts_mean`, `total_normal_force_mean` stimmen auf 10+ Nachkommastellen exakt überein), bei `action_saturation_mean=1.0` durchgehend. Das ist kein Lernfortschritt, sondern eine **von Anfang an vollständig gesättigte, eingefrorene Policy** – dieselbe DDPG/TD3-Kollaps-Pathologie, die bereits in Iteration 3 dokumentiert wurde (dort: identischer Reward über 2 Mio. Schritte bei DDPG). Die gesättigte Aktion hält zufällig, kombiniert mit der Nähe der kalibrierten Warmstart-Pose, dauerhaft Kontakt – das ist ein Artefakt der Netzwerk-Initialisierung, kein durch Training erworbenes Greifverhalten.
+
+**Nebenbefund `phase1_2_3_warmstart/DDPG`:** Reward friert ebenfalls ab Schritt 40.000 bei ~7.74 ein (gleiches Kollaps-Muster), aber hier bei `n_contacts=0.0`/`grasped=0.0` im deterministischen Eval – der Trainingslog zeigt `ep_rew_mean=7.74`, vermutlich weil die Trainingsrollouts (mit Explorationsrauschen) Kontakt erreichten, während die eingefrorene, geräuschfreie Eval-Policy keinen Kontakt reproduziert. Zusätzlich zeigt sich: Die in diesem Commit eingeführte `retained_ratio > 0`-Gate für Phase-3-Rewards greift bereits, wenn der Pause-Check am Episodenende minimalen Kontakt registriert – auch wenn während der Episode selbst nie `grasped=True` gemessen wurde (`retained_ratio_mean=0.333` bei `grasped_mean=0.0`). Die Sockelbonus-Lücke aus Iteration 1 ist damit nur teilweise geschlossen, nicht vollständig.
+
+**Damit ist über 5 Iterationen weiterhin kein einziger Lauf mit echtem, durch Training erworbenem Grasp-Erfolg zu verzeichnen.** Warmstart hat die Kontakt-Vorbedingung technisch korrekt hergestellt (99.8 % `grasped` bei Zero-Action, s.o.), aber keine der 15 RL-Policies hat das genutzt, um einen robusten Griff zu *lernen* – die einzigen nicht-null Befunde sind entweder isolierte Ausreißer oder Policy-Kollaps-Artefakte.
+
+### Aktualisierte Empfehlung für Iteration 6
+
+1. **DDPG/TD3-Policy-Kollaps als eigenständiges, vorrangiges Problem behandeln** (nicht erst "vor größeren Läufen", wie in Iteration 4 noch als Option formuliert, sondern jetzt zuerst): Der Kollaps tritt reproduzierbar bereits beim allerersten Eval-Checkpoint (20.000 Schritte) auf, unabhängig vom Reward-Profil. Nächster Schritt: Actor-Netzwerk-Initialisierung, `learning_starts`, Explorationsrauschen-Defaults gezielt prüfen, bevor weitere Ablationen mit diesen beiden Algorithmen sinnvoll sind.
+2. **PPO/SAC/A2C mit Warmstart zeigen keinen Kollaps, aber auch keinen sauberen Erfolg** – hier eher Hyperparameter (Netzwerkgröße, Lernrate) statt weiterer Trainingsdauer-Erhöhung untersuchen, da 200k/400k/2M bereits durchprobiert wurden.
+3. Instabilitätsrate (weiterhin ~50–53 % über alle 5 Iterationen) bleibt ein eigenständiges, noch ungeklärtes Problem – Multi-Seed-Untersuchung weiterhin ausstehend (Zeitbudget bislang durchgängig auf 1 Seed begrenzt).
+4. Die `retained_ratio > 0`-Gate müsste ggf. auf einen Mindest-`grasped_mean`- oder `n_contacts`-Schwellenwert *während* der Episode erweitert werden, nicht nur auf den Pause-Check am Ende, um die Sockelbonus-Lücke vollständig zu schließen (s. Nebenbefund oben).
