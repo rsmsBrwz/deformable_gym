@@ -112,7 +112,22 @@ def main() -> None:
     with open(os.path.join(cli_args.results_dir, "sweep_config.json"), "w") as f:
         json.dump(sweep_config, f, indent=2)
 
+    # Load any pre-existing summary.csv rows first -- this script is meant to
+    # be re-invoked against the same --results-dir to add more seeds/variants
+    # (see the iteration-6b follow-up in HYPERPARAMETER_SWEEP.md). Without
+    # this, a second invocation's fresh, empty summary_rows would overwrite
+    # the file below and silently discard every row from earlier invocations
+    # (the underlying per-run directories/checkpoints are untouched either
+    # way, only this aggregate CSV was at risk).
+    summary_path = os.path.join(cli_args.results_dir, "summary.csv")
     summary_rows = []
+    existing_keys = set()
+    if os.path.exists(summary_path):
+        with open(summary_path, newline="") as f:
+            for row in csv.DictReader(f):
+                summary_rows.append(row)
+                existing_keys.add((row.get("algorithm"), row.get("variant"), row.get("seed")))
+
     for algo_name in cli_args.algorithms:
         variant_names = cli_args.variants or list(HPARAM_VARIANTS[algo_name])
         for variant_name in variant_names:
@@ -136,9 +151,19 @@ def main() -> None:
                 final_row["env"] = f"{algo_name}_{variant_name}"
                 final_row["profile"] = cli_args.profile
                 final_row["variant"] = variant_name
+                key = (algo_name, variant_name, str(seed))
+                if key in existing_keys:
+                    # Re-running an already-recorded combo (e.g. re-invoked
+                    # with overlapping seeds) -- replace its row instead of
+                    # duplicating it.
+                    summary_rows = [
+                        r
+                        for r in summary_rows
+                        if (r.get("algorithm"), r.get("variant"), r.get("seed")) != key
+                    ]
+                existing_keys.add(key)
                 summary_rows.append(final_row)
 
-                summary_path = os.path.join(cli_args.results_dir, "summary.csv")
                 fieldnames = sorted({k for row in summary_rows for k in row})
                 with open(summary_path, "w", newline="") as f:
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
