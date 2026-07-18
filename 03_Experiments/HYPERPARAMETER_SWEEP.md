@@ -133,3 +133,15 @@ Wichtige technische Randbemerkung für die Interpretation: `action_noise` wirkt 
 
 1. **TD3 mit `action_noise` in einem vollen Lauf testen** (400.000 Schritte, `phase1_warmstart`), um zu prüfen, ob sich das nicht-eingefrorene Verhalten aus dieser Kurzdiagnose bei mehr Trainingszeit zu echtem, gehaltenem Kontakt entwickelt.
 2. **DDPG separat untersuchen** – `action_noise` allein reicht hier nicht; als Nächstes Actor-Netzwerk-Initialisierung, `learning_starts` und Critic-Lernrate gezielt variieren, analog zur Methodik dieser Iteration (kurze 60k-Diagnoseläufe vor einer vollen Ablation).
+
+## Iteration 8: TD3 mit `action_noise` im vollen Lauf
+
+**Ziel:** Punkt 1 der Iteration-7-Empfehlung umsetzen – prüfen, ob das in der 60k-Kurzdiagnose beobachtete nicht-eingefrorene Verhalten von TD3 mit `NormalActionNoise` bei vollem Trainingsbudget zu echtem, gehaltenem Kontakt führt statt nur die Policy in Bewegung zu halten. Punkt 2 (DDPG-spezifische Untersuchung von Actor-Init/`learning_starts`/Critic-Lernrate) ist bewusst nicht Teil dieser Iteration – eigenständiges Setup, kein einfaches Hochskalieren von `diagnose_action_noise.py`.
+
+**Umsetzung:** Wiederverwendung von `diagnose_action_noise.py` (Iteration 7) unverändert, nur mit vollem Budget statt der 60k-Kurzdiagnose. Läuft `TD3/no_noise` (Referenz, reproduziert das bekannte Kollaps-Muster) und `TD3/with_noise` (`NormalActionNoise`, σ = 20 % der Aktionsspannweite) sequentiell auf dem `phase1_warmstart`-Profil.
+
+```bash
+python diagnose_action_noise.py --algorithms TD3 --total-timesteps 400000 --eval-freq 20000 --run-timeout-minutes 240 --results-dir ./results/diagnose_action_noise_iter8_td3
+```
+
+Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v8_td3_action_noise.log`). Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
