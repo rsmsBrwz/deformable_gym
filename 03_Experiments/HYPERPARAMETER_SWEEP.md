@@ -168,3 +168,24 @@ Reward und `action_saturation` bewegen sich sichtbar über alle 4 erreichten Che
 1. **Hänger-Ursache mit `action_noise` gezielt untersuchen**, bevor ein erneuter voller Lauf sinnvoll ist – z. B. kleineres `--noise-sigma-fraction` (aktuell 20 % der Aktionsspannweite, evtl. zu aggressiv in Kombination mit der bekannten Instabilitäts-Anfälligkeit dieser Simulation) oder ein Noise-Decay-Schedule statt konstantem Rauschen über die ganze Laufzeit.
 2. Falls das den Hänger behebt: erneuter voller 400k-Lauf – aus der Iteration-6b-Lehre **von Anfang an mit mehreren Seeds**, nicht erst nachträglich, um einen Einzel-Checkpoint-Zufallstreffer nicht wieder als Durchbruch fehlzudeuten. Ebenfalls aus Iteration 6b: `n_eval_episodes` erhöhen (aktuell 3).
 3. Alternativ: DDPG-spezifische Untersuchung (Actor-Init, `learning_starts`, Critic-Lernrate) aus der ursprünglichen Iteration-7-Empfehlung Punkt 2, die bislang noch nicht angegangen wurde.
+
+## Iteration 9: DDPG-spezifische Kollaps-Untersuchung
+
+**Ziel:** Punkt 3 der Iteration-8-Empfehlung umsetzen. Iteration 7 hat gezeigt, dass `action_noise` bei DDPG (anders als bei TD3) den Kollaps **nicht** verhindert – die Policy friert trotzdem ein, nur an einem anderen Fixpunkt. Der Fehlermodus muss also woanders liegen. Kandidaten: Netzwerkkapazität, `learning_starts` (Default 100 – nach nur 100 Zufallsschritten übernimmt bereits der Actor die Exploration), Lernrate.
+
+**Wichtige Einschränkung:** SB3s `DDPG.__init__` hat **eine gemeinsame** `learning_rate` für Actor und Critic (kein separater `critic_learning_rate`-Kwarg) und exponiert keine direkte Gewichts-Initialisierung – "Actor-Netzwerk-Initialisierung" wird hier daher über Netzwerkkapazität (`policy_kwargs.net_arch`) angenähert, nicht über ein echtes Init-Schema.
+
+**Umsetzung:** Neues Skript `diagnose_ddpg.py`, analog zu `diagnose_action_noise.py` (Iteration 7): 4 Varianten, je eine Achse gegenüber dem SB3-Default verändert, alle in derselben kurzen Diagnose-Skala (60k Schritte, `eval_freq=10000`) direkt vergleichbar:
+
+| Variante | Änderung | Begründung |
+|---|---|---|
+| `baseline` | keine (`learning_rate=1e-3`, `learning_starts=100`, `net_arch=[400,300]`) | Referenz, in diesem Lauf direkt mitgeführt statt nur auf frühere Läufe zu verweisen |
+| `high_learning_starts` | `learning_starts=10000` (100×) | Mehr Zufalls-Explorationsdaten im Replay-Buffer, bevor überhaupt ein Gradientenschritt läuft |
+| `low_lr` | `learning_rate=1e-4` (10× kleiner) | Langsamerer Actor-Drift, falls die Standard-Rate ihn zu schnell in die Tanh-Sättigung treibt |
+| `larger_net` | `policy_kwargs.net_arch=[512,512]` | DDPG ist per Default bereits bei `[400,300]` (anders als PPO/A2C) – Variante geht bewusst darüber hinaus |
+
+```bash
+python diagnose_ddpg.py --total-timesteps 60000 --eval-freq 10000 --run-timeout-minutes 60 --results-dir ./results/diagnose_ddpg_iter9
+```
+
+Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v9_ddpg_diagnostic.log`). Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
