@@ -188,4 +188,24 @@ Reward und `action_saturation` bewegen sich sichtbar über alle 4 erreichten Che
 python diagnose_ddpg.py --total-timesteps 60000 --eval-freq 10000 --run-timeout-minutes 60 --results-dir ./results/diagnose_ddpg_iter9
 ```
 
-Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v9_ddpg_diagnostic.log`). Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
+Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v9_ddpg_diagnostic.log`), abgeschlossen am 2026-07-18.
+
+### Ergebnis: `low_lr` friert als erste DDPG-Konfiguration der gesamten Studie nicht ein
+
+Vollständige Checkpoint-Trajektorien (6 Checkpoints, 10k–60k):
+
+| Variante | Verhalten | Kontakt |
+|---|---|---|
+| `baseline` | Bit-identisch **ab dem allerersten Checkpoint** (10k): Reward 7.02, `n_contacts=11`, `action_saturation=1.0` – über alle 6 Checkpoints exakt gleich. | Ja, aber eingefroren – deckt sich mit dem aus Iteration 5 bekannten Artefakt (gesättigte Aktion trifft zufällig auf die Warmstart-Pose, kein Lernfortschritt) |
+| `high_learning_starts` | Checkpoint 1 (10k, `action_saturation=0.0`, Modell kaum trainiert) zeigt Kontakt (`n_contacts=7`), dann **ab 20k bit-identisch eingefroren** bei einem *schlechteren* Fixpunkt (Reward −0.12, `n_contacts=0`, `action_saturation=1.0`) für die restlichen 5 Checkpoints. | Nur am Anfang, danach nie wieder |
+| **`low_lr`** | **Kein Einfrieren über alle 6 Checkpoints** – Reward schwankt (−1.29 bis +0.03), `action_saturation` bewegt sich zwischen 68 % und 98 %, nie fixiert bei 1.0. | Nie (`n_contacts=0` durchgehend) |
+| `larger_net` | Fast so schnell eingefroren wie `baseline` (ab 20k bit-identisch bei Reward −1.19, `action_saturation=1.0`). | Nie |
+
+**Einordnung:** `learning_starts` und `larger_net` verzögern den Kollaps bestenfalls geringfügig oder verschieben ihn nur auf einen anderen (schlechteren) Fixpunkt – kein echter Fortschritt. **`low_lr` (1e-3→1e-4) ist die erste DDPG-Konfiguration in der gesamten Studie, die gar nicht einfriert** – strukturell vergleichbar mit dem Effekt, den `action_noise` bei TD3 in Iteration 7/8 hatte. Allerdings wurde auch hier in den verfügbaren 60k Schritten kein einziger Kontakt gefunden – analog zu `TD3/with_noise` in Iteration 8 bleibt offen, ob mehr Trainingszeit zu echtem Kontakt führt.
+
+### Empfehlung für Iteration 10
+
+1. **`low_lr` auf vollen Lauf skalieren** (400k Schritte) – diesmal von Anfang an mit **mehreren Seeds** (Lehre aus Iteration 6b) und höherem `n_eval_episodes` (aktuell 3, ebenfalls Lehre aus 6b). Vorsichtshalber auf Hänger prüfen (Lehre aus Iteration 8 – dort hat `action_noise` bei TD3 einen neuen Fehlermodus statt einer Lösung erzeugt).
+2. Alternativ: Nach drei Iterationen (7, 8, 9) ohne durchschlagenden DDPG/TD3-Erfolg diese Spur zurückstellen und stattdessen PPO/SAC/A2C-Hyperparameter breiter untersuchen oder einen Environment-seitigen Hebel suchen.
+
+Beides parallel gestartet – Punkt 1 als Hintergrundlauf (Iteration 10a), Punkt 2 als aktive Weiterarbeit (Iteration 10b), siehe unten.
