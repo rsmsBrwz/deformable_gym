@@ -88,7 +88,19 @@ python run_hparam_sweep.py --algorithms SAC --variants larger_net --seeds 1 2 3 
 python run_hparam_sweep.py --algorithms SAC --variants larger_net --seeds 0 --total-timesteps 1200000 --eval-freq 40000 --results-dir ./results/hparam_sweep_sac_larger_net_long
 ```
 
-Gestartet am 2026-07-11 im Hintergrund (Logs: `ablation_v6b_sac_multiseed.log`, `ablation_v6b_sac_long.log`). Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
+Gestartet am 2026-07-11 im Hintergrund (Logs: `ablation_v6b_sac_multiseed.log`, `ablation_v6b_sac_long.log`), abgeschlossen am 2026-07-18.
+
+### Ergebnis: Seed 0 war ein Einzelfall, nicht reproduzierbar
+
+**Multi-Seed (1–4):** Keiner der vier neuen Seeds zeigt echten Kontakt – `best_n_contacts_mean=0.0` und `best_grasped_mean=0.0` bei allen vieren, durchgängig. Der in Iteration 6 bei Seed 0 beobachtete wiederholte, nicht-kollabierte Kontakt (Schritt 60k und 320k) **reproduziert sich nicht**. Timeout-Quote 2/4 (50 %, Seeds 2 und 4), passend zum sonstigen Bild dieser Studie.
+
+**Verlängertes Training (Seed 0, 1,2 Mio. Schritte geplant):** Lief per Watchdog nur bis Schritt ~703.000 (58 % des geplanten Budgets, `run-timeout-minutes=240` erreicht, kein Absturz/Hänger). In den zusätzlichen ~300.000 Schritten über das ursprüngliche 400k-Budget hinaus (Checkpoints 440k–680k) taucht **kein neuer Kontakt-Erfolg** auf – der bereits aus Iteration 6 bekannte beste Checkpoint bleibt Schritt 320.000 (`n_contacts=16`). Positiv: Reward und `action_saturation` schwanken über den gesamten verlängerten Zeitraum weiterhin normal (0.06–0.46) statt einzufrieren – die Policy zeigt also nicht das DDPG/TD3/A2C-typische Kollaps-Muster, findet aber auch keinen zusätzlichen, dauerhaften Griff.
+
+**Einordnung:** Der Seed-0-Befund aus Iteration 6 war rückblickend am ehesten ein seedspezifischer Zufallstreffer (zwei vereinzelte Kontakt-Episoden während der Exploration), keine reproduzierbare Eigenschaft von `SAC/larger_net`. Damit bleibt über alle 6 Iterationen und jetzt auch 6b weiterhin **kein einziger reproduzierbarer, echter Grasp-Erfolg** bestehen.
+
+### Empfehlung
+
+`SAC/larger_net` als eigenständiger Hebel ist damit erledigt – kein weiterer Folgelauf gerechtfertigt. Vielversprechender ist die parallel gelaufene Iteration 7 (DDPG/TD3-Action-Noise-Diagnose, siehe unten): dort zeigt zumindest TD3 mit Rauschen ein qualitativ neues, nicht-kollabiertes Verhalten, das einen gezielten Folgelauf rechtfertigt.
 
 ## Iteration 7: DDPG/TD3-Action-Noise-Diagnose
 
