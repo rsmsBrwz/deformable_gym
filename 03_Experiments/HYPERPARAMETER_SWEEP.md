@@ -209,3 +209,18 @@ Vollständige Checkpoint-Trajektorien (6 Checkpoints, 10k–60k):
 2. Alternativ: Nach drei Iterationen (7, 8, 9) ohne durchschlagenden DDPG/TD3-Erfolg diese Spur zurückstellen und stattdessen PPO/SAC/A2C-Hyperparameter breiter untersuchen oder einen Environment-seitigen Hebel suchen.
 
 Beides parallel gestartet – Punkt 1 als Hintergrundlauf (Iteration 10a), Punkt 2 als aktive Weiterarbeit (Iteration 10b), siehe unten.
+
+## Iteration 10a: `DDPG/low_lr` im vollen Lauf, Multi-Seed von Anfang an
+
+**Ziel:** Klären, ob das nicht-eingefrorene Verhalten von `low_lr` aus der 60k-Kurzdiagnose bei vollem Trainingsbudget zu echtem Kontakt führt – diesmal mit den Lehren aus Iteration 6b/8 von Anfang an eingebaut, statt nachträglich als Folgelauf.
+
+**Umsetzung:** `diagnose_ddpg.py` (Iteration 9) unverändert wiederverwendet, mit vollem Budget statt Kurzdiagnose-Skala:
+- **5 Seeds (0–4) von Anfang an** statt nachträglicher Reproduzierbarkeitsprüfung (Iteration 6b musste das nachholen, nachdem sich Seed 0 als Einzelfall herausstellte).
+- **`n_eval_episodes=10`** statt Default 3, um Einzel-Episoden-Rauschen bei der Best-Checkpoint-Auswahl zu reduzieren (Lehre aus Iteration 6b, wo ein 3-Episoden-Mittel einen Zufallstreffer als Durchbruch erscheinen ließ).
+- Gleicher Watchdog wie immer (`run-timeout-minutes=240`) als Absicherung gegen einen erneuten `mj_step`-Hänger wie in Iteration 8.
+
+```bash
+python diagnose_ddpg.py --variants low_lr --seeds 0 1 2 3 4 --total-timesteps 400000 --eval-freq 20000 --n-eval-episodes 10 --run-timeout-minutes 240 --results-dir ./results/diagnose_ddpg_iter10a_low_lr
+```
+
+Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v10a_ddpg_lowlr_full.log`), während parallel an Iteration 10b weitergearbeitet wird. Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
