@@ -144,4 +144,27 @@ Wichtige technische Randbemerkung für die Interpretation: `action_noise` wirkt 
 python diagnose_action_noise.py --algorithms TD3 --total-timesteps 400000 --eval-freq 20000 --run-timeout-minutes 240 --results-dir ./results/diagnose_action_noise_iter8_td3
 ```
 
-Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v8_td3_action_noise.log`). Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
+Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v8_td3_action_noise.log`), abgeschlossen am 2026-07-18.
+
+### Ergebnis: Rauschen verhindert das Einfrieren, aber der Lauf hängt sich stattdessen auf
+
+**`TD3/no_noise`** (vollständig durchgelaufen, alle 400.000 Schritte): reproduziert exakt das aus Iteration 5/7 bekannte Muster. `n_contacts=3` bei Schritt 20.000 (einziger Checkpoint mit Kontakt), danach **bit-identisch eingefroren** bei Reward 0.0906, `n_contacts=0`, `action_saturation=1.0` über alle 19 folgenden Checkpoints (40k–400k). Bestätigt den Kollaps als robust reproduzierbar auch bei vollem Budget.
+
+**`TD3/with_noise`**: kollabiert nicht, findet aber auch keinen Kontakt – und der Lauf bricht vorzeitig ab.
+
+| Schritt | Reward | `action_saturation` | `n_contacts` |
+|---|---|---|---|
+| 20.000 | 1.37 | 0.996 | 0.0 |
+| 40.000 | −1.35 | 0.942 | 0.0 |
+| 60.000 | 0.12 | 0.584 | 0.0 |
+| 80.000 | −0.36 | 0.531 | 0.0 |
+
+Reward und `action_saturation` bewegen sich sichtbar über alle 4 erreichten Checkpoints (`action_saturation` sinkt sogar kontinuierlich von 99,6 % auf 53 %) – das Rauschen verhindert also tatsächlich das Kollaps-Muster, wie in der Iteration-7-Kurzdiagnose vermutet. **Aber:** Der Lauf wurde vom Watchdog nach nur ~81.700 von 400.000 Schritten gekillt (`no progress for 15 min` – ein Hänger, kein regulärer Truncate durch Instabilität). Das ist der aus der allerersten Session-Phase bekannte MuJoCo-`mj_step`-Hänger (ein einzelner Physik-Schritt kehrt bei extremen Zuständen nie zurück, s. `SESSION_NOTES_grasp_stability_pipeline.md`) – vermutlich provoziert durch das zusätzliche Aktionsrauschen, das die Simulation gelegentlich in einen Extremzustand drängt, den die `mia_hand`-`ctrlrange`-Fixes aus Phase 1 nicht abdecken. In den 4 erreichten Checkpoints: durchgehend `n_contacts=0`.
+
+**Einordnung:** `action_noise` löst das Policy-Kollaps-Problem zuverlässig, tauscht es aber gegen einen neuen, härteren Fehlermodus (Simulations-Hänger statt sauberem Truncate) ein. Ob es bei vollständigen 400k Schritten zu echtem Kontakt käme, bleibt unbeantwortet, weil der Lauf technisch nie so weit kam.
+
+### Empfehlung für Iteration 9
+
+1. **Hänger-Ursache mit `action_noise` gezielt untersuchen**, bevor ein erneuter voller Lauf sinnvoll ist – z. B. kleineres `--noise-sigma-fraction` (aktuell 20 % der Aktionsspannweite, evtl. zu aggressiv in Kombination mit der bekannten Instabilitäts-Anfälligkeit dieser Simulation) oder ein Noise-Decay-Schedule statt konstantem Rauschen über die ganze Laufzeit.
+2. Falls das den Hänger behebt: erneuter voller 400k-Lauf – aus der Iteration-6b-Lehre **von Anfang an mit mehreren Seeds**, nicht erst nachträglich, um einen Einzel-Checkpoint-Zufallstreffer nicht wieder als Durchbruch fehlzudeuten. Ebenfalls aus Iteration 6b: `n_eval_episodes` erhöhen (aktuell 3).
+3. Alternativ: DDPG-spezifische Untersuchung (Actor-Init, `learning_starts`, Critic-Lernrate) aus der ursprünglichen Iteration-7-Empfehlung Punkt 2, die bislang noch nicht angegangen wurde.
