@@ -224,3 +224,20 @@ python diagnose_ddpg.py --variants low_lr --seeds 0 1 2 3 4 --total-timesteps 40
 ```
 
 Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v10a_ddpg_lowlr_full.log`), während parallel an Iteration 10b weitergearbeitet wird. Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
+
+## Iteration 10b: PPO/SAC/A2C breiter untersucht
+
+**Ziel:** Punkt 2 der Iteration-9-Empfehlung umsetzen, parallel zu Iteration 10a. Keine der drei Iteration-6-Varianten (`larger_net`/`high_entropy`/`high_lr`, je einzeln getestet) hat einen robusten Erfolg gebracht (s. Iteration 6/6b) – zwei neue, bislang ungetestete Achsen ergänzt in `hparam_configs.py`:
+
+| Variante | PPO/SAC/A2C | Begründung |
+|---|---|---|
+| `low_gamma` | `gamma=0.9` (Default bei allen drei Algorithmen: `0.99`) | Episoden hier laufen ~400–800 Schritte, das Kontakt-/Griff-Signal ist kurzfristig. Bei `gamma=0.99` ist eine Belohnung 100 Schritte in der Zukunft noch ~37 % wert, bei `gamma=0.9` unter 0,01 % – konzentriert die Wertschätzung auf die nächsten paar Dutzend Schritte statt auf einen langen Horizont, der für diese Aufgabe vermutlich zu lang ist. |
+| `combo_net_entropy` | `larger_net` + `high_entropy` kombiniert | Iteration 6 hat "mehr Kapazität" und "mehr Exploration" nur einzeln getestet, nie zusammen, obwohl beide Hypothesen sich nicht ausschließen. |
+
+**Umsetzung:** Wiederverwendung von `run_hparam_sweep.py`/`hparam_configs.py` (Iteration 6) unverändert – nur die zwei neuen Varianten angehängt, keine bestehenden Einträge verändert (Vergleichbarkeit zu Iteration 6 bleibt erhalten). `n_eval_episodes=10` (Lehre aus Iteration 6b, s. Iteration 10a) diesmal von Anfang an, statt wie in Iteration 6 beim Default (3) zu bleiben.
+
+```bash
+python run_hparam_sweep.py --algorithms PPO SAC A2C --variants low_gamma combo_net_entropy --profile phase1_warmstart --total-timesteps 400000 --eval-freq 20000 --n-eval-episodes 10 --results-dir ./results/hparam_sweep_iter10b
+```
+
+Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v10b_hparam_broader.log`, 6 Läufe: 3 Algorithmen × 2 neue Varianten). Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
