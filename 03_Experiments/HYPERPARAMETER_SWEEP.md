@@ -223,7 +223,23 @@ Beides parallel gestartet – Punkt 1 als Hintergrundlauf (Iteration 10a), Punkt
 python diagnose_ddpg.py --variants low_lr --seeds 0 1 2 3 4 --total-timesteps 400000 --eval-freq 20000 --n-eval-episodes 10 --run-timeout-minutes 240 --results-dir ./results/diagnose_ddpg_iter10a_low_lr
 ```
 
-Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v10a_ddpg_lowlr_full.log`), während parallel an Iteration 10b weitergearbeitet wird. Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
+Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v10a_ddpg_lowlr_full.log`), während parallel an Iteration 10b weitergearbeitet wird.
+
+### Ergebnis: Alle 5 Seeds per Hänger beendet – aber Seed 3 zeigt den bislang stärksten Befund der gesamten Studie
+
+**Alle 5 Seeds wurden per Watchdog abgebrochen** (`no progress for 15 min` – echte `mj_step`-Hänger, keiner hat die vollen 400.000 Schritte erreicht). Das ist eine deutlich schlechtere Hänger-Quote (5/5) als der bisherige DDPG/TD3-Durchschnitt (~50 %) – `low_lr` scheint die Simulation anfälliger für den Hänger zu machen, nicht weniger.
+
+| Seed | Checkpoints erreicht | `action_saturation` | Kontakt |
+|---|---|---|---|
+| 0 | 4 (bis 80k) | schwankt 0,68–0,92 | nie |
+| 1 | 9 (bis 180k) | schwankt 0,90–1,0, oft nahe Sättigung | nie |
+| 2 | 0 – Hänger vor dem ersten Checkpoint | – | – |
+| **3** | 7 (bis 140k) | **fällt kontinuierlich von 1,0 auf 0,58–0,73** | **Ja – bei Schritt 140.000** |
+| 4 | 6 (bis 120k) | meist 0,96–1,0, kaum Bewegung | nie |
+
+**Seed 3 ist der vielversprechendste Einzelbefund der gesamten Studie (Iterationen 1–10):** Anders als jeder bisherige "Erfolg" (isolierte Einzel-Checkpoints, oft nur über 3 Eval-Episoden gemittelt) zeigt sich hier ein **plausibler, allmählicher Lernverlauf**: Reward steigt schrittweise −0,40 (60k) → 0,98 (80k) → 0,49 (100k) → 1,32 (120k) → **7,02 (140k, `n_contacts=13`, `grasped=1.0`, über 10 Eval-Episoden gemittelt)**, während `action_saturation` im selben Zeitraum kontinuierlich sinkt (1,0 → 0,92 → 0,74 → 0,58 → 0,73). Das sieht nach echtem, graduellem Fortschritt aus, nicht nach Zufallstreffer. Der Lauf hing sich aber direkt nach diesem Checkpoint auf – unbekannt, ob sich der Kontakt gehalten, weiterentwickelt oder wieder verloren hätte. Nur 1 von 5 Seeds zeigt das Muster; die anderen vier bleiben durchgehend bei `n_contacts=0`.
+
+**Einordnung:** Erster Befund der Studie mit dem Charakter von echtem, gradueller Lernfortschritt statt Artefakt – aber weder reproduziert noch bis zum Ende beobachtet, wegen des Hängers. Nächster Schritt: Seed 3 mit identischem Setup wiederholen, um zu prüfen ob sich Verlauf/Hänger reproduzieren und was nach Schritt 140k passiert wäre.
 
 ## Iteration 10b: PPO/SAC/A2C breiter untersucht
 
@@ -240,4 +256,21 @@ Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v10a_ddpg_lowlr_full.log`
 python run_hparam_sweep.py --algorithms PPO SAC A2C --variants low_gamma combo_net_entropy --profile phase1_warmstart --total-timesteps 400000 --eval-freq 20000 --n-eval-episodes 10 --results-dir ./results/hparam_sweep_iter10b
 ```
 
-Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v10b_hparam_broader.log`, 6 Läufe: 3 Algorithmen × 2 neue Varianten). Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
+Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v10b_hparam_broader.log`, 6 Läufe: 3 Algorithmen × 2 neue Varianten), abgeschlossen am 2026-07-19.
+
+### Ergebnis: Kein neuer robuster Erfolg – `SAC/combo_net_entropy` wiederholt das bereits widerlegte Iteration-6-Muster
+
+| Algo/Variante | Status | Verhalten |
+|---|---|---|
+| PPO/low_gamma | Timeout (~120k) | `action_saturation` 0,94–0,98, kein Kollaps, aber auch kein Kontakt |
+| PPO/combo_net_entropy | Timeout (~80k) | Zu wenig Daten für eine Aussage |
+| SAC/low_gamma | Timeout (~280k) | **Nicht eingefroren** (`action_saturation` 0,09–0,56), aber durchgehend `n_contacts=0` über alle 13 Checkpoints |
+| `SAC/combo_net_entropy` | Vollständig (400k) | Kontakt an **2 frühen Checkpoints** (20k: `n_contacts=8`, 80k: `n_contacts=9`, beide Reward 7.02), danach **18 Checkpoints durchgehend `n_contacts=0`** bis 400k. `action_saturation` bleibt die ganze Zeit in Bewegung (nie eingefroren). |
+| A2C/low_gamma | Vollständig (400k) | Ab ~180k größtenteils eingefroren bei Reward 0,964 (gelegentliche Ausreißer), `action_saturation=1.0` durchgehend ab 100k |
+| A2C/combo_net_entropy | Vollständig (400k) | **Härtester Kollaps der Studie bisher**: ab Schritt 140.000 14 Checkpoints in Folge bit-identisch bei Reward 0,617, `action_saturation≈1.0` fast von Anfang an |
+
+**Einordnung `SAC/combo_net_entropy`:** Strukturell **exakt dasselbe Muster wie `SAC/larger_net` aus Iteration 6** – zwei isolierte frühe Kontakt-Checkpoints, danach nie wieder, trotz nicht-eingefrorener Policy. Iteration 6b hat genau dieses Muster bereits bei einer anderen SAC-Variante als nicht reproduzierbar entlarvt (0/4 neue Seeds). Entsprechend mit Skepsis zu behandeln, auch wenn `n_eval_episodes=10` diesmal die einzelnen Checkpoints selbst zuverlässiger macht als in Iteration 6 (dort 3).
+
+### Empfehlung für Iteration 11
+
+Mit jetzt 6 Hyperparameter-fokussierten Iterationen (6, 6b, 7, 8, 9, 10a, 10b) ohne einen einzigen reproduzierten, dauerhaften Erfolg: Hebel wechseln, statt weiterer PPO/SAC/A2C-Varianten. Der einzige Befund der letzten 6 Iterationen mit dem Charakter von echtem statt zufälligem Fortschritt ist `DDPG/low_lr`-Seed 3 aus Iteration 10a – dort weitermachen (Hänger-Ursache untersuchen, Seed 3 wiederholen), siehe Iteration 11 unten.
