@@ -274,3 +274,15 @@ Gestartet am 2026-07-18 im Hintergrund (Log: `ablation_v10b_hparam_broader.log`,
 ### Empfehlung für Iteration 11
 
 Mit jetzt 6 Hyperparameter-fokussierten Iterationen (6, 6b, 7, 8, 9, 10a, 10b) ohne einen einzigen reproduzierten, dauerhaften Erfolg: Hebel wechseln, statt weiterer PPO/SAC/A2C-Varianten. Der einzige Befund der letzten 6 Iterationen mit dem Charakter von echtem statt zufälligem Fortschritt ist `DDPG/low_lr`-Seed 3 aus Iteration 10a – dort weitermachen (Hänger-Ursache untersuchen, Seed 3 wiederholen), siehe Iteration 11 unten.
+
+## Iteration 11: `DDPG/low_lr`-Seed 3 wiederholen
+
+**Ziel:** Prüfen, ob sich der in Iteration 10a beobachtete graduelle Lernverlauf von Seed 3 (Reward-Anstieg über 5 Checkpoints bis echtem Kontakt bei Schritt 140.000, dann Hänger) reproduzieren lässt – und, falls der Hänger diesmal ausbleibt oder später auftritt, was nach Schritt 140k passiert.
+
+**Umsetzung:** `diagnose_ddpg.py` unverändert, identisches Setup wie Iteration 10a (`low_lr`, `n_eval_episodes=10`, `run-timeout-minutes=240`), nur auf Seed 3 beschränkt. **Eigenes Ergebnisverzeichnis** statt Wiederverwendung von `results/diagnose_ddpg_iter10a_low_lr/`, damit die ursprüngliche Seed-3-Trajektorie (der bislang stärkste Befund der Studie) nicht überschrieben wird, falls dieser Lauf anders verläuft.
+
+```bash
+python diagnose_ddpg.py --variants low_lr --seeds 3 --total-timesteps 400000 --eval-freq 20000 --n-eval-episodes 10 --run-timeout-minutes 240 --results-dir ./results/diagnose_ddpg_iter11_seed3_repeat
+```
+
+Gestartet am 2026-07-19 im Hintergrund (Log: `ablation_v11_ddpg_seed3_repeat.log`). Ergebnisse folgen in einer Aktualisierung dieses Abschnitts.
